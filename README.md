@@ -449,23 +449,3 @@ This project is proprietary. All rights reserved.
 
 ---
 
-## 👥 Team
-
-- **Development**: Claude Sonnet 4.5 + Engineering Team
-- **Design**: Sky Vision Design Team
-- **Product**: Sky Vision Product Team
-
----
-
-## 📧 Support
-
-For issues, questions, or feature requests:
-- **GitHub Issues**: [Create an issue](https://github.com/your-org/sky-vision/issues)
-- **Email**: support@skyvision.com
-- **Docs**: See CART_SYSTEM.md and QUICK_START.md
-
----
-
-**Built with ❤️ for NFL scouts and analysts**
-
-*Last updated: December 2024 | Version: 1.0.0*
