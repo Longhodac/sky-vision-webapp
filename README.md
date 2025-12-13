@@ -420,7 +420,7 @@ Contributions welcome! Please follow these guidelines:
 feat: Add new feature
 fix: Bug fix
 docs: Documentation update
-style: Code style changes (formatting, etc.)
+style: Code style changes (formatting, etc. )
 refactor: Code refactoring
 test: Add or update tests
 chore: Maintenance tasks
