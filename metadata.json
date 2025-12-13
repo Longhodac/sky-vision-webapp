@@ -1,4 +1,5 @@
 {
   "name": "SKY VISION – Ball IQ PER-10",
-  "description": "Responsive web application for NFL analytics interns and scouts to evaluate Receivers and Defensive Backs using Ball IQ PER-10 and AFTERSNAP IQ models."
+  "description": "Responsive web application for NFL analytics interns and scouts to evaluate Receivers and Defensive Backs using Ball IQ PER-10 and AFTERSNAP IQ models.",
+  "requestFramePermissions": []
 }

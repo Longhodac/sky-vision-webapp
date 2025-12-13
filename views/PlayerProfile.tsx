@@ -1,11 +1,53 @@
 import React from 'react';
 import { View } from '../types';
+import { useData } from '../context/DataContext';
 
 interface PlayerProfileProps {
     onNavigate: (view: View) => void;
+    selectedPlayerId: number | null;
 }
 
-const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
+const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate, selectedPlayerId }) => {
+    const { isLoading, players, scores, getPlayerPer10, calculateIQRating } = useData();
+
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-bg-deep">
+                <div className="text-text-main text-lg">Loading...</div>
+            </div>
+        );
+    }
+
+    // Get the player data
+    const player = selectedPlayerId
+        ? players.find(p => p.id === selectedPlayerId)
+        : players[0];
+
+    if (!player) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-bg-deep">
+                <div className="text-text-main text-lg">No player data available</div>
+            </div>
+        );
+    }
+
+    // Calculate player stats
+    const playerScores = scores.filter(s => s.player_id === player.id);
+    const avgPer10 = getPlayerPer10(player.id);
+    const avgIQ = calculateIQRating(avgPer10);
+    const totalSnaps = playerScores.length;
+
+    // Calculate average metrics
+    const avgReleaseSpeed = playerScores.length > 0
+        ? playerScores.reduce((acc, s) => acc + (s.release_speed || 0), 0) / playerScores.length
+        : 0;
+    const avgRouteFidelity = playerScores.length > 0
+        ? playerScores.reduce((acc, s) => acc + (s.route_fidelity || 0), 0) / playerScores.length
+        : 0;
+    const avgLeverage = playerScores.length > 0
+        ? playerScores.reduce((acc, s) => acc + (s.leverage || 0), 0) / playerScores.length
+        : 0;
+
     return (
         <div className="flex-1 overflow-y-auto p-6 lg:px-8 lg:py-10 bg-bg-deep">
             <div className="mx-auto max-w-[1400px] flex flex-col gap-8">
@@ -28,15 +70,15 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
                         </div>
                         <div className="flex flex-col items-center md:items-start gap-3">
                             <div className="flex flex-col items-center md:items-start">
-                                <h1 className="text-4xl md:text-5xl font-bold text-text-main tracking-tight">Justin Jefferson</h1>
+                                <h1 className="text-4xl md:text-5xl font-bold text-text-main tracking-tight">{player.name}</h1>
                                 <div className="flex items-center gap-3 text-text-sub text-base mt-2">
-                                    <span className="font-bold text-white bg-white/10 px-2 py-0.5 rounded text-xs tracking-wide">WR</span>
+                                    <span className="font-bold text-white bg-white/10 px-2 py-0.5 rounded text-xs tracking-wide">{player.position}</span>
                                     <span className="size-1 rounded-full bg-text-muted"></span>
-                                    <span>Minnesota Vikings</span>
+                                    <span>{player.team}</span>
                                     <span className="size-1 rounded-full bg-text-muted"></span>
-                                    <span>6'1" • 195 lbs</span>
+                                    <span>#{player.number}</span>
                                     <span className="size-1 rounded-full bg-text-muted"></span>
-                                    <span>Exp: 4 Years</span>
+                                    <span>{totalSnaps} Snaps Scored</span>
                                 </div>
                             </div>
                             <div className="flex flex-wrap gap-2 mt-4 justify-center md:justify-start">
@@ -73,14 +115,14 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
                             <div>
                                 <p className="text-sm font-medium text-text-sub mb-1">PER-10 Score</p>
                                 <div className="flex items-baseline gap-3">
-                                    <span className="text-5xl font-bold text-primary tracking-tighter">9.2</span>
+                                    <span className="text-5xl font-bold text-primary tracking-tighter">{avgPer10.toFixed(1)}</span>
                                     <div className="flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary border border-primary/20">
-                                        <span className="material-symbols-outlined text-[12px]">arrow_upward</span> Top 1%
+                                        <span className="material-symbols-outlined text-[12px]">analytics</span> Avg
                                     </div>
                                 </div>
                             </div>
                             <div className="w-full h-1.5 rounded-full bg-bg-elevated overflow-hidden">
-                                <div className="h-full w-[92%] rounded-full bg-gradient-to-r from-primary to-indigo-400 shadow-[0_0_10px_rgba(79,70,229,0.5)]"></div>
+                                <div className="h-full rounded-full bg-gradient-to-r from-primary to-indigo-400 shadow-[0_0_10px_rgba(79,70,229,0.5)]" style={{width: `${(avgPer10 / 10) * 100}%`}}></div>
                             </div>
                         </div>
                     </div>
@@ -91,12 +133,12 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
                             <div>
                                 <p className="text-sm font-medium text-text-sub mb-1">AFTERSNAP IQ</p>
                                 <div className="flex items-baseline gap-3">
-                                    <span className="text-5xl font-bold text-white tracking-tighter">8.8</span>
-                                    <span className="text-sm font-medium text-pillar-eyes">94th %ile</span>
+                                    <span className="text-5xl font-bold text-white tracking-tighter">{avgIQ}</span>
+                                    <span className="text-sm font-medium text-pillar-eyes">%</span>
                                 </div>
                             </div>
                             <div className="flex items-end gap-[3px] h-8 mt-2">
-                                {[20,30,40,50,70,60,40,85,30,10].map((h, i) => (
+                                {[20,30,40,50,70,60,40,Math.min(85, avgIQ),30,10].map((h, i) => (
                                     <div key={i} className={`flex-1 rounded-sm transition-all ${i === 7 ? 'bg-pillar-eyes shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-bg-elevated group-hover:bg-bg-elevated/70'}`} style={{height: `${h}%`}}></div>
                                 ))}
                             </div>
@@ -107,17 +149,17 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
                     <div className="glass-panel relative overflow-hidden rounded-2xl p-6 group">
                         <div className="flex flex-col justify-between h-full gap-4">
                             <div>
-                                <p className="text-sm font-medium text-text-sub mb-1">Total Snaps</p>
+                                <p className="text-sm font-medium text-text-sub mb-1">Total Snaps Scored</p>
                                 <div className="flex items-baseline gap-3">
-                                    <span className="text-5xl font-bold text-white tracking-tighter">450</span>
-                                    <span className="text-xs font-medium text-status-red flex items-center bg-status-red/10 px-1.5 py-0.5 rounded">
-                                        <span className="material-symbols-outlined text-[12px]">arrow_downward</span> 2.1%
+                                    <span className="text-5xl font-bold text-white tracking-tighter">{totalSnaps}</span>
+                                    <span className="text-xs font-medium text-status-good flex items-center bg-status-good/10 px-1.5 py-0.5 rounded">
+                                        <span className="material-symbols-outlined text-[12px]">analytics</span> Live
                                     </span>
                                 </div>
                             </div>
                             <div className="flex justify-between text-xs text-text-sub pt-2 border-t border-border-subtle/50 mt-1">
-                                <span>Pass: <span className="text-white font-medium">280</span></span>
-                                <span>Run: <span className="text-white font-medium">170</span></span>
+                                <span>Avg Release: <span className="text-white font-medium">{avgReleaseSpeed.toFixed(1)}</span></span>
+                                <span>Avg Route: <span className="text-white font-medium">{avgRouteFidelity.toFixed(1)}</span></span>
                             </div>
                         </div>
                     </div>
@@ -126,16 +168,16 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
                     <div className="glass-panel relative overflow-hidden rounded-2xl p-6 group">
                         <div className="flex flex-col justify-between h-full gap-4">
                             <div>
-                                <p className="text-sm font-medium text-text-sub mb-1">Target Share</p>
+                                <p className="text-sm font-medium text-text-sub mb-1">Avg Leverage</p>
                                 <div className="flex items-baseline gap-3">
-                                    <span className="text-5xl font-bold text-white tracking-tighter">28.5<span className="text-2xl text-text-sub">%</span></span>
+                                    <span className="text-5xl font-bold text-white tracking-tighter">{avgLeverage.toFixed(1)}<span className="text-2xl text-text-sub">/10</span></span>
                                     <span className="text-xs font-medium text-secondary flex items-center bg-secondary/10 px-1.5 py-0.5 rounded">
-                                        <span className="material-symbols-outlined text-[12px]">arrow_upward</span> 4.5%
+                                        <span className="material-symbols-outlined text-[12px]">psychology</span> IQ
                                     </span>
                                 </div>
                             </div>
                             <div className="text-xs text-text-sub pt-2 border-t border-border-subtle/50 mt-1">
-                                League Avg: 18.2% (WR1)
+                                Position: {player.position}
                             </div>
                         </div>
                     </div>
@@ -190,58 +232,58 @@ const PlayerProfile: React.FC<PlayerProfileProps> = ({ onNavigate }) => {
                             {/* Items */}
                             <div className="grid grid-cols-12 items-center gap-4 rounded-xl bg-bg-elevated/50 p-4 border border-transparent hover:border-pillar-s/30 hover:bg-bg-elevated transition-all group">
                                 <div className="col-span-12 sm:col-span-3 flex flex-col">
-                                    <span className="text-sm font-semibold text-white">Separation</span>
-                                    <span className="text-xs text-pillar-s font-medium">Vs. Man Coverage</span>
+                                    <span className="text-sm font-semibold text-white">Release Speed</span>
+                                    <span className="text-xs text-pillar-s font-medium">Average</span>
                                 </div>
                                 <div className="col-span-12 sm:col-span-6">
                                     <div className="relative h-2 w-full rounded-full bg-bg-deep/80">
-                                        <div className="absolute top-0 left-0 h-full w-[98%] rounded-full bg-pillar-s shadow-[0_0_8px_rgba(59,130,246,0.4)]"></div>
+                                        <div className="absolute top-0 left-0 h-full rounded-full bg-pillar-s shadow-[0_0_8px_rgba(59,130,246,0.4)]" style={{width: `${(avgReleaseSpeed / 10) * 100}%`}}></div>
                                     </div>
                                 </div>
                                 <div className="col-span-6 sm:col-span-1 text-right sm:text-left">
-                                    <span className="text-lg font-bold text-white">98</span>
-                                    <span className="text-[10px] text-text-sub">/100</span>
+                                    <span className="text-lg font-bold text-white">{avgReleaseSpeed.toFixed(1)}</span>
+                                    <span className="text-[10px] text-text-sub">/10</span>
                                 </div>
                                 <div className="col-span-6 sm:col-span-2 flex justify-end">
                                     <span className="material-symbols-outlined text-pillar-s opacity-70 group-hover:opacity-100 transition-opacity">show_chart</span>
                                 </div>
                             </div>
-                            
+
                             <div className="grid grid-cols-12 items-center gap-4 rounded-xl bg-bg-elevated/50 p-4 border border-transparent hover:border-pillar-e/30 hover:bg-bg-elevated transition-all group">
                                 <div className="col-span-12 sm:col-span-3 flex flex-col">
-                                    <span className="text-sm font-semibold text-white">Contested Catch</span>
-                                    <span className="text-xs text-pillar-e font-medium">Win Rate</span>
+                                    <span className="text-sm font-semibold text-white">Route Fidelity</span>
+                                    <span className="text-xs text-pillar-e font-medium">Average</span>
                                 </div>
                                 <div className="col-span-12 sm:col-span-6">
                                     <div className="relative h-2 w-full rounded-full bg-bg-deep/80">
-                                        <div className="absolute top-0 left-0 h-full w-[85%] rounded-full bg-pillar-e shadow-[0_0_8px_rgba(139,92,246,0.4)]"></div>
+                                        <div className="absolute top-0 left-0 h-full rounded-full bg-pillar-e shadow-[0_0_8px_rgba(139,92,246,0.4)]" style={{width: `${(avgRouteFidelity / 10) * 100}%`}}></div>
                                     </div>
                                 </div>
                                 <div className="col-span-6 sm:col-span-1 text-right sm:text-left">
-                                    <span className="text-lg font-bold text-white">85</span>
-                                    <span className="text-[10px] text-text-sub">/100</span>
+                                    <span className="text-lg font-bold text-white">{avgRouteFidelity.toFixed(1)}</span>
+                                    <span className="text-[10px] text-text-sub">/10</span>
                                 </div>
                                 <div className="col-span-6 sm:col-span-2 flex justify-end">
                                     <span className="material-symbols-outlined text-pillar-e opacity-70 group-hover:opacity-100 transition-opacity">show_chart</span>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-12 items-center gap-4 rounded-xl bg-bg-elevated/50 p-4 border border-transparent border-l-4 border-l-status-red hover:bg-bg-elevated transition-all group">
+                            <div className="grid grid-cols-12 items-center gap-4 rounded-xl bg-bg-elevated/50 p-4 border border-transparent border-l-4 border-l-primary hover:bg-bg-elevated transition-all group">
                                 <div className="col-span-12 sm:col-span-3 flex flex-col">
-                                    <span className="text-sm font-semibold text-white">Blocking</span>
-                                    <span className="text-xs text-text-sub">Run Support</span>
+                                    <span className="text-sm font-semibold text-white">Leverage</span>
+                                    <span className="text-xs text-text-sub">Maintenance</span>
                                 </div>
                                 <div className="col-span-12 sm:col-span-6">
                                     <div className="relative h-2 w-full rounded-full bg-bg-deep/80">
-                                        <div className="absolute top-0 left-0 h-full w-[45%] rounded-full bg-status-red shadow-[0_0_8px_rgba(239,68,68,0.4)]"></div>
+                                        <div className="absolute top-0 left-0 h-full rounded-full bg-primary shadow-[0_0_8px_rgba(79,70,229,0.4)]" style={{width: `${(avgLeverage / 10) * 100}%`}}></div>
                                     </div>
                                 </div>
                                 <div className="col-span-6 sm:col-span-1 text-right sm:text-left">
-                                    <span className="text-lg font-bold text-white">45</span>
-                                    <span className="text-[10px] text-text-sub">/100</span>
+                                    <span className="text-lg font-bold text-white">{avgLeverage.toFixed(1)}</span>
+                                    <span className="text-[10px] text-text-sub">/10</span>
                                 </div>
                                 <div className="col-span-6 sm:col-span-2 flex justify-end">
-                                    <span className="material-symbols-outlined text-status-red opacity-70 group-hover:opacity-100 transition-opacity">trending_down</span>
+                                    <span className="material-symbols-outlined text-primary opacity-70 group-hover:opacity-100 transition-opacity">trending_up</span>
                                 </div>
                             </div>
                         </div>

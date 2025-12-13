@@ -1,11 +1,32 @@
 import React from 'react';
 import { View } from '../types';
+import { useData } from '../context/DataContext';
 
 interface SessionSummaryProps {
     onNavigate: (view: View) => void;
 }
 
 const SessionSummary: React.FC<SessionSummaryProps> = ({ onNavigate }) => {
+    const { isLoading, scores, getPlayersWithScores, players } = useData();
+
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-bg-deep">
+                <div className="text-text-main text-lg">Loading...</div>
+            </div>
+        );
+    }
+
+    const playersWithScores = getPlayersWithScores();
+    const totalScores = scores.length;
+    const uniquePlayers = new Set(scores.map(s => s.player_id)).size;
+
+    // Calculate quick instinct tags (scores above 9.0 PER-10)
+    const quickInstinctCount = scores.filter(s => (s.per_10_score || 0) >= 9.0).length;
+
+    // Calculate red flags (scores below 6.0 PER-10)
+    const redFlagCount = scores.filter(s => (s.per_10_score || 0) < 6.0).length;
+
     return (
         <div className="flex-1 overflow-y-auto bg-bg-deep p-6">
             <div className="px-4 md:px-10 lg:px-12 flex flex-1 justify-center py-8">
@@ -36,10 +57,10 @@ const SessionSummary: React.FC<SessionSummaryProps> = ({ onNavigate }) => {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                         {[
-                            { label: 'Plays Annotated', value: '52', icon: 'edit_note', color: 'primary' },
-                            { label: 'Unique Players', value: '14', icon: 'groups', color: 'text-sub' },
-                            { label: 'Quick Instinct Tags', value: '8', icon: 'flash_on', color: 'pillar-improv' },
-                            { label: 'Red Flags', value: '3', icon: 'flag', color: 'status-red' }
+                            { label: 'Plays Annotated', value: totalScores.toString(), icon: 'edit_note', color: 'primary' },
+                            { label: 'Unique Players', value: uniquePlayers.toString(), icon: 'groups', color: 'text-sub' },
+                            { label: 'Quick Instinct Tags', value: quickInstinctCount.toString(), icon: 'flash_on', color: 'pillar-improv' },
+                            { label: 'Red Flags', value: redFlagCount.toString(), icon: 'flag', color: 'status-red' }
                         ].map((item, i) => (
                             <div key={i} className="bg-bg-card border border-border-subtle shadow-xl backdrop-blur-sm rounded-3xl p-6 transition-all duration-300 hover:shadow-lg hover:shadow-primary/5 hover:translate-y-[-2px] hover:border-border-subtle/80 relative overflow-hidden group">
                                 <div className="flex justify-between items-start mb-6 z-10 relative">
@@ -82,40 +103,46 @@ const SessionSummary: React.FC<SessionSummaryProps> = ({ onNavigate }) => {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border-subtle/50">
-                                            {[
-                                                { name: 'Sauce Gardner', team: 'NYJ • #1', pos: 'DB', per: '9.2', iq: '8.8', flags: '-', avatar: '65', pillar: 'pillar-s' },
-                                                { name: 'Davante Adams', team: 'LVR • #17', pos: 'WR', per: '8.9', iq: '9.1', flags: '1', avatar: '177', pillar: 'pillar-e' },
-                                                { name: 'Jalen Ramsey', team: 'MIA • #5', pos: 'DB', per: '8.5', iq: '7.9', flags: '-', avatar: '91', pillar: 'pillar-a' },
-                                                { name: 'Tyreek Hill', team: 'MIA • #10', pos: 'WR', per: '9.4', iq: '8.5', flags: '2', avatar: '100', pillar: 'pillar-improv' }
-                                            ].map((p, i) => (
-                                                <tr key={i} className="group hover:bg-bg-elevated/40 transition-colors">
-                                                    <td className="px-8 py-5">
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 ring-2 ring-border-subtle group-hover:ring-primary/40 transition-all" style={{backgroundImage: `url("https://picsum.photos/id/${p.avatar}/100/100")`}}></div>
-                                                            <div>
-                                                                <span className="text-text-main text-base font-bold block mb-0.5">{p.name}</span>
-                                                                <span className="text-text-sub text-xs font-medium">{p.team}</span>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-5">
-                                                        <span className={`inline-flex items-center justify-center rounded-lg bg-bg-elevated border border-border-subtle px-3 py-1.5 text-xs font-bold text-${p.pillar}`}>{p.pos}</span>
-                                                    </td>
-                                                    <td className="px-6 py-5 text-right">
-                                                        <span className="text-status-good text-base font-bold">{p.per}</span>
-                                                    </td>
-                                                    <td className="px-6 py-5 text-right">
-                                                        <span className="text-text-main text-base font-medium">{p.iq}</span>
-                                                    </td>
-                                                    <td className="px-8 py-5 text-right">
-                                                        {p.flags !== '-' ? (
-                                                            <div className="inline-flex items-center justify-center h-8 px-3 rounded-lg bg-status-red/10 border border-status-red/20 text-status-red font-bold text-sm gap-2">
-                                                                <span>{p.flags}</span> <span className="material-symbols-outlined text-sm">flag</span>
-                                                            </div>
-                                                        ) : <span className="text-text-disabled">-</span>}
+                                            {playersWithScores.length > 0 ? (
+                                                playersWithScores.slice(0, 10).map((p) => {
+                                                    const playerFlagCount = scores.filter(s => s.player_id === p.id && (s.per_10_score || 0) < 6.0).length;
+                                                    return (
+                                                        <tr key={p.id} className="group hover:bg-bg-elevated/40 transition-colors">
+                                                            <td className="px-8 py-5">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 ring-2 ring-border-subtle group-hover:ring-primary/40 transition-all" style={{backgroundImage: p.avatar_url ? `url("${p.avatar_url}")` : 'url("https://picsum.photos/id/65/100/100")'}}></div>
+                                                                    <div>
+                                                                        <span className="text-text-main text-base font-bold block mb-0.5">{p.name}</span>
+                                                                        <span className="text-text-sub text-xs font-medium">{p.team} • #{p.number}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-5">
+                                                                <span className="inline-flex items-center justify-center rounded-lg bg-bg-elevated border border-border-subtle px-3 py-1.5 text-xs font-bold text-primary">{p.position}</span>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-right">
+                                                                <span className="text-status-good text-base font-bold">{p.averagePer10.toFixed(1)}</span>
+                                                            </td>
+                                                            <td className="px-6 py-5 text-right">
+                                                                <span className="text-text-main text-base font-medium">{p.averageIQ.toFixed(0)}</span>
+                                                            </td>
+                                                            <td className="px-8 py-5 text-right">
+                                                                {playerFlagCount > 0 ? (
+                                                                    <div className="inline-flex items-center justify-center h-8 px-3 rounded-lg bg-status-red/10 border border-status-red/20 text-status-red font-bold text-sm gap-2">
+                                                                        <span>{playerFlagCount}</span> <span className="material-symbols-outlined text-sm">flag</span>
+                                                                    </div>
+                                                                ) : <span className="text-text-disabled">-</span>}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan={5} className="px-8 py-12 text-center text-text-sub">
+                                                        No scores yet. Start scoring to see player rankings!
                                                     </td>
                                                 </tr>
-                                            ))}
+                                            )}
                                         </tbody>
                                     </table>
                                 </div>

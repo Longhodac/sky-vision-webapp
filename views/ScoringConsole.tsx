@@ -1,14 +1,86 @@
 import React, { useState } from 'react';
 import { View } from '../types';
+import { supabase } from '@/utils/supabase';
+import { useData } from '../context/DataContext';
 
 interface ScoringConsoleProps {
     onNavigate: (view: View) => void;
 }
 
 const ScoringConsole: React.FC<ScoringConsoleProps> = ({ onNavigate }) => {
+    const { players, plays, calculatePer10, calculateIQRating, refreshData, isLoading } = useData();
+
+    const [selectedPlayerId, setSelectedPlayerId] = useState<number>(players[0]?.id || 0);
+    const [selectedPlayId, setSelectedPlayId] = useState<number>(plays[0]?.id || 0);
     const [releaseSpeed, setReleaseSpeed] = useState<number>(9);
     const [routeFidelity, setRouteFidelity] = useState<number>(8);
     const [leverage, setLeverage] = useState<number>(7);
+    const [isSaving, setIsSaving] = useState(false);
+
+    const calculatedPer10 = calculatePer10(releaseSpeed, routeFidelity, leverage);
+    const calculatedIQ = calculateIQRating(calculatedPer10);
+
+    const handleSave = async () => {
+        if (!selectedPlayerId || !selectedPlayId) {
+            alert('Please select both a player and a play before saving.');
+            return;
+        }
+
+        setIsSaving(true);
+
+        try {
+            console.log("Attempting to save score to Supabase...");
+
+            const { data, error } = await supabase
+                .from('scores')
+                .insert([
+                    {
+                        play_id: selectedPlayId,
+                        player_id: selectedPlayerId,
+                        release_speed: releaseSpeed,
+                        route_fidelity: routeFidelity,
+                        leverage: leverage,
+                        per_10_score: calculatedPer10,
+                        notes: "Live scoring session"
+                    }
+                ])
+                .select();
+
+            if (error) {
+                throw error;
+            }
+
+            console.log('Score saved successfully to Supabase:', data);
+
+            // Refresh data to update the context
+            await refreshData();
+
+            // Navigate to summary
+            onNavigate(View.SUMMARY);
+        } catch (error: any) {
+            console.error('Error saving score:', error);
+            let msg = 'Failed to save score.';
+            if (error.code === '23503') {
+                msg += ` Foreign Key Violation: Ensure Play ID ${selectedPlayId} and Player ID ${selectedPlayerId} exist in your database tables.`;
+            } else {
+                msg += ` ${error.message}`;
+            }
+            alert(msg);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-bg-deep">
+                <div className="text-text-main text-lg">Loading...</div>
+            </div>
+        );
+    }
+
+    const selectedPlayer = players.find(p => p.id === selectedPlayerId);
+    const selectedPlay = plays.find(p => p.id === selectedPlayId);
 
     return (
         <div className="bg-bg-deep text-text-main font-display overflow-hidden h-screen flex flex-col selection:bg-primary selection:text-white">
@@ -93,17 +165,18 @@ const ScoringConsole: React.FC<ScoringConsoleProps> = ({ onNavigate }) => {
                                 <h3 className="text-text-main font-bold text-sm tracking-wide uppercase">Play Context</h3>
                             </div>
                              <div className="grid grid-cols-3 gap-y-6 gap-x-8">
-                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Game ID</p><p className="text-text-main font-mono text-sm bg-bg-elevated px-3 py-1.5 rounded-md inline-block border border-white/5">#2492-ATL-NO</p></div>
-                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Quarter</p><p className="text-text-main font-mono text-sm">Q3 (08:42)</p></div>
-                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Down & Dist</p><p className="text-text-main font-mono text-sm font-bold text-pillar-a">2nd & 8</p></div>
+                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Game ID</p><p className="text-text-main font-mono text-sm bg-bg-elevated px-3 py-1.5 rounded-md inline-block border border-white/5">#{selectedPlay?.game_id || 'N/A'}</p></div>
+                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Quarter</p><p className="text-text-main font-mono text-sm">Q{selectedPlay?.quarter || '?'} ({selectedPlay?.time_remaining || 'N/A'})</p></div>
+                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Down & Dist</p><p className="text-text-main font-mono text-sm font-bold text-pillar-a">{selectedPlay?.down || '?'}{'st'} & {selectedPlay?.distance || '?'}</p></div>
                                 <div className="col-span-2">
                                     <p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Defensive Scheme</p>
                                     <div className="flex items-center gap-2">
-                                        <span className="px-3 py-1 rounded-full bg-bg-elevated text-xs font-medium text-text-main border border-border-subtle hover:border-text-muted transition-colors cursor-default">Cover 3 Match</span>
-                                        <span className="px-3 py-1 rounded-full bg-bg-elevated text-xs font-medium text-text-main border border-border-subtle hover:border-text-muted transition-colors cursor-default">Nickel</span>
+                                        <span className="px-3 py-1 rounded-full bg-bg-elevated text-xs font-medium text-text-main border border-border-subtle hover:border-text-muted transition-colors cursor-default">
+                                            {selectedPlay?.defensive_scheme || 'N/A'}
+                                        </span>
                                     </div>
                                 </div>
-                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Play ID</p><p className="text-text-main font-mono text-sm">402</p></div>
+                                <div><p className="text-text-muted text-xs font-semibold uppercase tracking-wider mb-2">Play ID</p><p className="text-text-main font-mono text-sm">{selectedPlay?.id || 'N/A'}</p></div>
                             </div>
                          </div>
                          <div className="col-span-1 bg-bg-card rounded-2xl border border-border-subtle p-6 flex flex-col shadow-sm">
@@ -145,8 +218,20 @@ const ScoringConsole: React.FC<ScoringConsoleProps> = ({ onNavigate }) => {
                              <div className="relative group">
                                 <label className="absolute -top-2.5 left-3 bg-bg-card px-1.5 text-[10px] text-primary font-bold tracking-wider z-10">PLAYER</label>
                                 <div className="relative">
-                                    <select className="w-full bg-bg-elevated border border-border-subtle rounded-xl text-sm text-text-main py-3 pl-4 pr-10 focus:ring-2 focus:ring-primary focus:border-primary outline-none appearance-none cursor-pointer hover:bg-bg-elevated/80 transition-colors shadow-inner">
-                                        <option>WR #18 - J. Jefferson</option>
+                                    <select
+                                        className="w-full bg-bg-elevated border border-border-subtle rounded-xl text-sm text-text-main py-3 pl-4 pr-10 focus:ring-2 focus:ring-primary focus:border-primary outline-none appearance-none cursor-pointer hover:bg-bg-elevated/80 transition-colors shadow-inner"
+                                        value={selectedPlayerId}
+                                        onChange={(e) => setSelectedPlayerId(Number(e.target.value))}
+                                    >
+                                        {players.length === 0 ? (
+                                            <option value={0}>No players available</option>
+                                        ) : (
+                                            players.map(player => (
+                                                <option key={player.id} value={player.id}>
+                                                    {player.position} #{player.number} - {player.name}
+                                                </option>
+                                            ))
+                                        )}
                                     </select>
                                     <div className="absolute right-3 top-3 pointer-events-none text-text-muted">
                                         <span className="material-symbols-outlined text-xl">expand_more</span>
@@ -154,10 +239,22 @@ const ScoringConsole: React.FC<ScoringConsoleProps> = ({ onNavigate }) => {
                                 </div>
                             </div>
                             <div className="relative group">
-                                <label className="absolute -top-2.5 left-3 bg-bg-card px-1.5 text-[10px] text-text-muted font-bold tracking-wider group-hover:text-primary transition-colors z-10">ROLE</label>
+                                <label className="absolute -top-2.5 left-3 bg-bg-card px-1.5 text-[10px] text-text-muted font-bold tracking-wider group-hover:text-primary transition-colors z-10">CONTEXT/PLAY</label>
                                 <div className="relative">
-                                    <select className="w-full bg-bg-elevated border border-border-subtle rounded-xl text-sm text-text-main py-3 pl-4 pr-10 focus:ring-2 focus:ring-primary focus:border-primary outline-none appearance-none cursor-pointer hover:bg-bg-elevated/80 transition-colors shadow-inner">
-                                        <option>Offense (WR)</option>
+                                    <select
+                                        className="w-full bg-bg-elevated border border-border-subtle rounded-xl text-sm text-text-main py-3 pl-4 pr-10 focus:ring-2 focus:ring-primary focus:border-primary outline-none appearance-none cursor-pointer hover:bg-bg-elevated/80 transition-colors shadow-inner"
+                                        value={selectedPlayId}
+                                        onChange={(e) => setSelectedPlayId(Number(e.target.value))}
+                                    >
+                                        {plays.length === 0 ? (
+                                            <option value={0}>No plays available</option>
+                                        ) : (
+                                            plays.map(play => (
+                                                <option key={play.id} value={play.id}>
+                                                    Q{play.quarter || '?'} - {play.down || '?'} & {play.distance || '?'}
+                                                </option>
+                                            ))
+                                        )}
                                     </select>
                                     <div className="absolute right-3 top-3 pointer-events-none text-text-muted">
                                         <span className="material-symbols-outlined text-xl">expand_more</span>
@@ -264,21 +361,21 @@ const ScoringConsole: React.FC<ScoringConsoleProps> = ({ onNavigate }) => {
                                 <div className="flex flex-col">
                                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-2">PER-10 Score</p>
                                     <div className="flex items-baseline">
-                                        <div className="text-4xl font-bold text-text-main tracking-tighter">{((releaseSpeed + routeFidelity + leverage)/3 * 1.05).toFixed(1)}</div>
+                                        <div className="text-4xl font-bold text-text-main tracking-tighter">{calculatedPer10.toFixed(1)}</div>
                                         <span className="text-sm text-text-muted font-normal ml-1 mb-1">/10</span>
                                     </div>
                                     <div className="w-full h-1 bg-white/10 rounded-full mt-2 overflow-hidden">
-                                        <div className="h-full bg-text-main w-[84%]"></div>
+                                        <div className="h-full bg-text-main" style={{width: `${(calculatedPer10 / 10) * 100}%`}}></div>
                                     </div>
                                 </div>
                                 <div className="flex flex-col">
                                     <p className="text-[10px] text-text-muted uppercase tracking-widest font-bold mb-2">IQ Rating</p>
                                     <div className="flex items-baseline">
-                                        <div className="text-4xl font-bold text-primary tracking-tighter">92</div>
+                                        <div className="text-4xl font-bold text-primary tracking-tighter">{calculatedIQ}</div>
                                         <span className="text-sm text-primary/70 font-normal ml-1 mb-1">%</span>
                                     </div>
                                     <div className="w-full h-1 bg-white/10 rounded-full mt-2 overflow-hidden">
-                                        <div className="h-full bg-primary w-[92%]"></div>
+                                        <div className="h-full bg-primary" style={{width: `${calculatedIQ}%`}}></div>
                                     </div>
                                 </div>
                             </div>
@@ -295,9 +392,17 @@ const ScoringConsole: React.FC<ScoringConsoleProps> = ({ onNavigate }) => {
                         <button className="flex-1 py-3.5 px-4 rounded-xl bg-bg-elevated text-text-main font-semibold border border-border-subtle hover:bg-white/5 transition-all duration-200 text-sm hover:border-text-muted shadow-sm hover:shadow-md">
                             Save Draft
                         </button>
-                        <button className="flex-[2] py-3.5 px-4 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/20 flex items-center justify-center gap-2 text-sm hover:scale-[1.02] active:scale-[0.98]" onClick={() => onNavigate(View.SUMMARY)}>
-                            Save & Next Play
-                            <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                        <button 
+                            className="flex-[2] py-3.5 px-4 rounded-xl bg-primary text-white font-bold hover:bg-primary/90 transition-all duration-200 shadow-lg shadow-primary/20 flex items-center justify-center gap-2 text-sm hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed" 
+                            onClick={handleSave}
+                            disabled={isSaving}
+                        >
+                            {isSaving ? 'Saving...' : (
+                                <>
+                                    Save & Next Play
+                                    <span className="material-symbols-outlined text-lg">arrow_forward</span>
+                                </>
+                            )}
                         </button>
                     </div>
                 </main>

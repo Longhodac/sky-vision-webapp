@@ -1,11 +1,113 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { View } from '../types';
+import { useData } from '../context/DataContext';
+import { useScoutCartStore } from '../stores/scoutCartStore';
+import ScoutCart from '../components/ScoutCart';
+import PlayerBrowserCard from '../components/PlayerBrowserCard';
+import PlayerSearchBar from '../components/PlayerSearchBar';
+import FilterPanel from '../components/FilterPanel';
 
 interface DashboardProps {
     onNavigate: (view: View) => void;
+    onSelectPlayer: (playerId: number) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate, onSelectPlayer }) => {
+    const { isLoading, scores, players, getTopPlayer, getRecentScores, getPlayersWithScores } = useData();
+    const { cart, isCartOpen, setIsCartOpen, addPlayerToCart } = useScoutCartStore();
+    const [positionFilter, setPositionFilter] = React.useState<string | null>(null);
+    const [searchQuery, setSearchQuery] = React.useState('');
+    const [minPerformance, setMinPerformance] = React.useState(0);
+    const [sortBy, setSortBy] = React.useState('per_10');
+    const [showFilters, setShowFilters] = React.useState(false);
+    const [selectedTargetPlayerId, setSelectedTargetPlayerId] = React.useState<number | null>(null);
+
+    if (isLoading) {
+        return (
+            <div className="flex-1 flex items-center justify-center bg-bg-deep">
+                <div className="text-text-main text-lg">Loading...</div>
+            </div>
+        );
+    }
+
+    const topPlayer = getTopPlayer();
+    const recentScores = getRecentScores(3);
+    const playersWithScores = getPlayersWithScores();
+
+    // Get the target player - either selected or default to top player
+    const targetPlayer = selectedTargetPlayerId
+        ? playersWithScores.find(p => p.id === selectedTargetPlayerId) || topPlayer
+        : topPlayer;
+
+    // Calculate average metrics from all scores
+    const avgReleaseSpeed = scores.length > 0
+        ? scores.reduce((acc, s) => acc + (s.release_speed || 0), 0) / scores.length
+        : 0;
+    const avgRouteFidelity = scores.length > 0
+        ? scores.reduce((acc, s) => acc + (s.route_fidelity || 0), 0) / scores.length
+        : 0;
+    const avgLeverage = scores.length > 0
+        ? scores.reduce((acc, s) => acc + (s.leverage || 0), 0) / scores.length
+        : 0;
+    const avgPer10 = scores.length > 0
+        ? scores.reduce((acc, s) => acc + (s.per_10_score || 0), 0) / scores.length
+        : 0;
+
+    const handlePlayerClick = () => {
+        if (targetPlayer) {
+            onSelectPlayer(targetPlayer.id);
+            onNavigate(View.PLAYER_PROFILE);
+        }
+    };
+
+    const handlePlayerCardClick = (playerId: number) => {
+        onSelectPlayer(playerId);
+        onNavigate(View.PLAYER_PROFILE);
+    };
+
+    const handleAddToCart = (player: any) => {
+        addPlayerToCart({
+            id: player.id,
+            name: player.name,
+            position: player.position,
+            number: player.number,
+            team: player.team,
+            avatar_url: player.avatar_url,
+            avg_per_10: player.averagePer10 || 0,
+            avg_aftersnap_iq: player.averageIQ || 0,
+            total_plays_tagged: player.scoreCount || 0,
+            archetype_tags: [],
+            notes: '',
+            addedAt: new Date().toISOString(),
+        });
+    };
+
+    // Filter players by position, search query, and performance
+    const filteredPlayers = playersWithScores.filter(player => {
+        const matchesPosition = !positionFilter || player.position === positionFilter;
+        const matchesSearch = !searchQuery ||
+            player.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            player.team.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            player.number.toString().includes(searchQuery);
+        const matchesPerformance = player.averagePer10 >= minPerformance;
+        return matchesPosition && matchesSearch && matchesPerformance;
+    });
+
+    // Sort filtered players
+    const sortedPlayers = [...filteredPlayers].sort((a, b) => {
+        switch (sortBy) {
+            case 'per_10':
+                return b.averagePer10 - a.averagePer10;
+            case 'aftersnap_iq':
+                return b.averageIQ - a.averageIQ;
+            case 'alphabetical':
+                return a.name.localeCompare(b.name);
+            default:
+                return 0;
+        }
+    });
+
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-bg-deep relative">
             <header className="h-24 shrink-0 px-6 lg:px-10 flex items-center justify-between z-20">
@@ -19,15 +121,32 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     <h1 className="text-3xl font-bold tracking-tight text-text-main">Sky Vision Dashboard</h1>
                 </div>
                 <div className="flex items-center gap-4">
-                    <div className="relative hidden md:block">
-                        <input className="bg-bg-elevated border-none rounded-full py-3 pl-12 pr-6 text-sm w-64 focus:ring-1 focus:ring-primary placeholder-text-sub/50 text-text-main" placeholder="Search..." type="text"/>
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-text-sub text-[20px]">search</span>
-                    </div>
                     <button className="flex items-center gap-3 bg-bg-elevated rounded-full pl-1 pr-4 py-1 hover:bg-bg-elevated/80 transition-all border border-white/5">
                         <div className="bg-bg-card rounded-full px-3 py-1.5 text-xs font-bold text-text-sub border border-white/5">Now</div>
                         <span className="text-sm font-medium text-text-main">Oct 14</span>
                         <span className="material-symbols-outlined text-text-sub text-[18px]">keyboard_arrow_down</span>
                     </button>
+
+                    {/* Scout Cart Button */}
+                    <motion.button
+                        onClick={() => setIsCartOpen(!isCartOpen)}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="relative px-4 py-2 bg-primary text-white rounded-xl font-medium hover:bg-primary-hover transition-colors flex items-center gap-2"
+                    >
+                        <span className="material-symbols-outlined">shopping_cart</span>
+                        <span className="hidden sm:inline">Cart</span>
+                        {cart.length > 0 && (
+                            <motion.span
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="absolute -top-2 -right-2 w-6 h-6 bg-status-red rounded-full flex items-center justify-center text-xs font-bold text-white"
+                            >
+                                {cart.length}
+                            </motion.span>
+                        )}
+                    </motion.button>
+
                     <button className="size-11 rounded-full bg-bg-elevated flex items-center justify-center text-text-main hover:bg-primary hover:text-white transition-all">
                         <span className="material-symbols-outlined">notifications</span>
                     </button>
@@ -40,43 +159,84 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                     {/* Top Row */}
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                         {/* Target Profile Card */}
-                        <div className="lg:col-span-5 bg-bg-card rounded-3xl p-8 relative overflow-hidden flex flex-col justify-between border border-white/5 shadow-xl shadow-black/20 cursor-pointer group" onClick={() => onNavigate(View.PLAYER_PROFILE)}>
+                        <div className="lg:col-span-5 bg-bg-card rounded-3xl p-8 relative overflow-hidden flex flex-col justify-between border border-white/5 shadow-xl shadow-black/20">
                             <div className="flex justify-between items-start mb-6">
-                                <div className="flex flex-col">
-                                    <h2 className="text-text-sub text-sm font-bold tracking-widest uppercase mb-1">Target Profile</h2>
-                                    <div className="flex items-center gap-3">
-                                        <h1 className="text-3xl xl:text-4xl font-bold text-white tracking-tight group-hover:text-primary transition-colors">Justin Jefferson</h1>
-                                        <span className="bg-white text-black text-xs font-bold px-2 py-1 rounded-md">WR</span>
+                                <div className="flex flex-col flex-1">
+                                    <h2 className="text-text-sub text-sm font-bold tracking-widest uppercase mb-3">Target Profile</h2>
+
+                                    {/* Player Selector Dropdown */}
+                                    <div className="relative mb-3">
+                                        <select
+                                            value={selectedTargetPlayerId || topPlayer?.id || ''}
+                                            onChange={(e) => setSelectedTargetPlayerId(Number(e.target.value))}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-full bg-bg-elevated border border-border-subtle rounded-xl text-lg font-bold text-text-main py-2 pl-3 pr-10 focus:outline-none focus:border-primary appearance-none cursor-pointer hover:bg-bg-elevated/80 transition-colors"
+                                        >
+                                            {playersWithScores.length > 0 ? (
+                                                playersWithScores.map((player) => (
+                                                    <option key={player.id} value={player.id}>
+                                                        {player.name} • {player.position} #{player.number}
+                                                    </option>
+                                                ))
+                                            ) : (
+                                                <option value="">No players available</option>
+                                            )}
+                                        </select>
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                            <span className="material-symbols-outlined text-text-sub">expand_more</span>
+                                        </div>
                                     </div>
-                                    <div className="text-text-sub text-sm mt-2 font-medium"> Minnesota Vikings • #18 </div>
+
+                                    <div className="flex items-center gap-3">
+                                        <span className="bg-white text-black text-xs font-bold px-2 py-1 rounded-md">
+                                            {targetPlayer ? targetPlayer.position : 'N/A'}
+                                        </span>
+                                        <div className="text-text-sub text-sm font-medium">
+                                            {targetPlayer ? `${targetPlayer.team} • #${targetPlayer.number}` : 'Add players to get started'}
+                                        </div>
+                                    </div>
                                 </div>
-                                <button className="size-10 rounded-full border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors">
-                                    <span className="material-symbols-outlined text-text-sub">more_horiz</span>
+                                <button
+                                    onClick={handlePlayerClick}
+                                    className="size-10 rounded-full border border-white/10 flex items-center justify-center hover:bg-primary hover:border-primary transition-colors group/btn shrink-0"
+                                >
+                                    <span className="material-symbols-outlined text-text-sub group-hover/btn:text-white">arrow_forward</span>
                                 </button>
                             </div>
                             <div className="flex items-end justify-between mt-auto relative z-10">
                                 <div className="flex flex-col gap-4">
                                     <div className="flex items-baseline gap-2">
-                                        <span className="text-5xl font-bold text-white">92.4</span>
+                                        <span className="text-5xl font-bold text-white">
+                                            {targetPlayer ? targetPlayer.averageIQ.toFixed(1) : '0.0'}
+                                        </span>
                                         <span className="text-primary text-sm font-bold bg-primary/10 px-2 py-1 rounded-lg">IQ Score</span>
                                     </div>
                                     <div className="flex gap-4">
                                         <div className="flex flex-col">
-                                            <span className="text-text-sub text-xs">Height</span>
-                                            <span className="text-text-main font-semibold">6'1"</span>
+                                            <span className="text-text-sub text-xs">PER-10</span>
+                                            <span className="text-text-main font-semibold">
+                                                {targetPlayer ? targetPlayer.averagePer10.toFixed(1) : '0.0'}
+                                            </span>
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-text-sub text-xs">Weight</span>
-                                            <span className="text-text-main font-semibold">195 lbs</span>
+                                            <span className="text-text-sub text-xs">Scores</span>
+                                            <span className="text-text-main font-semibold">
+                                                {targetPlayer ? targetPlayer.scoreCount : 0}
+                                            </span>
                                         </div>
                                         <div className="flex flex-col">
-                                            <span className="text-text-sub text-xs">College</span>
-                                            <span className="text-text-main font-semibold">LSU</span>
+                                            <span className="text-text-sub text-xs">Position</span>
+                                            <span className="text-text-main font-semibold">
+                                                {targetPlayer ? targetPlayer.position : 'N/A'}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="relative size-32 rounded-full border-4 border-bg-elevated overflow-hidden shadow-2xl">
-                                    <div className="bg-center bg-no-repeat bg-cover w-full h-full" style={{backgroundImage: 'url("https://picsum.photos/id/65/200/200")'}}></div>
+                                <div
+                                    onClick={handlePlayerClick}
+                                    className="relative size-32 rounded-full border-4 border-bg-elevated overflow-hidden shadow-2xl cursor-pointer hover:border-primary transition-all hover:scale-105"
+                                >
+                                    <div className="bg-center bg-no-repeat bg-cover w-full h-full" style={{backgroundImage: targetPlayer?.avatar_url ? `url("${targetPlayer.avatar_url}")` : 'url("https://picsum.photos/id/65/200/200")'}}></div>
                                 </div>
                             </div>
                             <svg className="absolute bottom-0 left-0 w-full h-32 opacity-10 pointer-events-none" preserveAspectRatio="none" viewBox="0 0 400 100">
@@ -124,9 +284,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                         <span className="material-symbols-outlined text-text-sub">more_horiz</span>
                                     </div>
                                     <div className="flex items-end gap-3 my-4">
-                                        <span className="text-4xl font-bold text-white">8.4</span>
+                                        <span className="text-4xl font-bold text-white">{avgPer10.toFixed(1)}</span>
                                         <span className="text-status-good text-sm font-bold mb-1 flex items-center">
-                                            <span className="material-symbols-outlined text-[16px]">arrow_upward</span> 1.2%
+                                            <span className="material-symbols-outlined text-[16px]">arrow_upward</span> Live
                                         </span>
                                     </div>
                                     <div className="h-12 w-full flex items-end gap-1">
@@ -142,17 +302,18 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 {/* Efficiency Card */}
                                 <div className="bg-bg-card rounded-3xl p-6 border border-white/5 relative overflow-hidden group flex flex-col justify-between">
                                     <div className="flex justify-between items-start">
-                                        <h3 className="font-bold text-lg text-text-main">Efficiency</h3>
+                                        <h3 className="font-bold text-lg text-text-main">Avg Metrics</h3>
                                         <div className="flex gap-1">
                                             <div className="size-2 bg-pillar-a rounded-full"></div>
                                             <div className="size-2 bg-text-sub/20 rounded-full"></div>
                                         </div>
                                     </div>
                                     <div className="flex items-end gap-3 my-4">
-                                        <span className="text-4xl font-bold text-white">9.1</span>
-                                        <span className="text-status-good text-sm font-bold mb-1 flex items-center">
-                                            <span className="material-symbols-outlined text-[16px]">arrow_upward</span> 0.8%
-                                        </span>
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-xs text-text-sub">Release: {avgReleaseSpeed.toFixed(1)}</span>
+                                            <span className="text-xs text-text-sub">Route: {avgRouteFidelity.toFixed(1)}</span>
+                                            <span className="text-xs text-text-sub">Leverage: {avgLeverage.toFixed(1)}</span>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-10 gap-1.5 mt-auto">
                                         {Array.from({length: 20}).map((_, i) => (
@@ -351,32 +512,131 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                 <span className="material-symbols-outlined text-text-sub">more_horiz</span>
                             </div>
                             <div className="flex flex-col gap-4 overflow-y-auto pr-2 flex-1 max-h-[300px]">
-                                <div className="flex items-center gap-4 p-3 rounded-2xl bg-bg-elevated/50 hover:bg-bg-elevated transition-colors cursor-pointer group border border-transparent hover:border-white/10" onClick={() => onNavigate(View.SCORING)}>
-                                    <div className="size-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
-                                        <span className="material-symbols-outlined">play_arrow</span>
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex justify-between mb-1">
-                                            <span className="font-bold text-sm text-white">Deep Post vs Sauce Gardner</span>
-                                            <span className="text-xs text-text-sub">14:02</span>
+                                {recentScores.length > 0 ? (
+                                    recentScores.map((score, idx) => (
+                                        <div key={score.id} className="flex items-center gap-4 p-3 rounded-2xl bg-bg-elevated/50 hover:bg-bg-elevated transition-colors cursor-pointer group border border-transparent hover:border-white/10" onClick={() => onNavigate(View.SCORING)}>
+                                            <div className="size-12 rounded-xl bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors shrink-0">
+                                                <span className="material-symbols-outlined">play_arrow</span>
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex justify-between mb-1">
+                                                    <span className="font-bold text-sm text-white">Score #{score.id}</span>
+                                                    <span className="text-xs text-text-sub">{new Date(score.created_at).toLocaleTimeString()}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-pillar-s uppercase bg-pillar-s/10 px-1.5 py-0.5 rounded">
+                                                        PER-10: {score.per_10_score?.toFixed(1) || 'N/A'}
+                                                    </span>
+                                                    <span className="text-xs text-text-muted">Play #{score.play_id}</span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-bold text-pillar-s uppercase bg-pillar-s/10 px-1.5 py-0.5 rounded">Separation Win</span>
-                                            <span className="text-xs text-text-muted">Target Share +12%</span>
-                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="flex items-center justify-center p-8 text-text-sub text-sm">
+                                        No scores yet. Start scoring to see highlights!
                                     </div>
-                                </div>
-                                {/* ... more items */}
+                                )}
                             </div>
                             <div className="flex justify-between items-center mt-auto pt-4 border-t border-white/5 text-sm">
-                                <div className="flex items-center gap-2"><span className="size-3 bg-pillar-s rounded-full block"></span><span className="text-text-sub">Wins</span></div>
-                                <div className="flex items-center gap-2"><span className="size-3 bg-status-red rounded-full block"></span><span className="text-text-sub">Errors</span></div>
-                                <span className="font-bold text-white ml-auto">Total: 284</span>
+                                <div className="flex items-center gap-2"><span className="size-3 bg-pillar-s rounded-full block"></span><span className="text-text-sub">Recent</span></div>
+                                <div className="flex items-center gap-2"><span className="size-3 bg-status-red rounded-full block"></span><span className="text-text-sub">Top 3</span></div>
+                                <span className="font-bold text-white ml-auto">Total: {scores.length}</span>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Player Selection Section */}
+                    <div className="grid grid-cols-1 gap-6 pb-6">
+                        <div className="bg-bg-card rounded-3xl p-8 border border-white/5">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                                <div>
+                                    <h3 className="font-bold text-lg text-text-main">Player Browser</h3>
+                                    <p className="text-text-sub text-sm mt-1">Browse players and add them to your scout cart</p>
+                                </div>
+
+                                {/* Toolbar */}
+                                <div className="flex items-center gap-3">
+                                    <PlayerSearchBar
+                                        query={searchQuery}
+                                        onChange={setSearchQuery}
+                                        playerCount={sortedPlayers.length}
+                                    />
+
+                                    <motion.button
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        whileHover={{ scale: 1.05 }}
+                                        whileTap={{ scale: 0.95 }}
+                                        className="px-4 py-2 bg-bg-elevated border border-border-subtle rounded-xl text-text-main font-medium hover:border-primary transition-colors whitespace-nowrap"
+                                    >
+                                        <span className="material-symbols-outlined text-lg">tune</span>
+                                    </motion.button>
+                                </div>
+                            </div>
+
+                            {/* Filters Panel */}
+                            {showFilters && (
+                                <div className="mb-6">
+                                    <FilterPanel
+                                        filter={{ position: positionFilter, minPerformance }}
+                                        onFilterChange={(f) => {
+                                            if (f.position !== undefined) setPositionFilter(f.position);
+                                            if (f.minPerformance !== undefined) setMinPerformance(f.minPerformance);
+                                        }}
+                                        sort={sortBy}
+                                        onSortChange={setSortBy}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Player Grid */}
+                            {sortedPlayers.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {sortedPlayers.map((player, idx) => (
+                                        <motion.div
+                                            key={player.id}
+                                            initial={{ opacity: 0, y: 20 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ duration: 0.25, delay: idx * 0.05 }}
+                                        >
+                                            <PlayerBrowserCard
+                                                player={{
+                                                    id: player.id,
+                                                    name: player.name,
+                                                    position: player.position,
+                                                    number: player.number,
+                                                    team: player.team,
+                                                    avatar_url: player.avatar_url,
+                                                    avg_per_10: player.averagePer10,
+                                                    avg_aftersnap_iq: player.averageIQ,
+                                                    total_plays_tagged: player.scoreCount,
+                                                    archetype_tags: [],
+                                                }}
+                                                isInCart={cart.some(p => p.id === player.id)}
+                                                onAddToCart={() => handleAddToCart(player)}
+                                                onViewProfile={() => handlePlayerCardClick(player.id)}
+                                            />
+                                        </motion.div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12 text-text-sub">
+                                    <span className="material-symbols-outlined text-5xl mb-4 opacity-30">search_off</span>
+                                    <p className="text-lg font-medium">No players found</p>
+                                    <p className="text-sm mt-1">Try adjusting your filters or search query</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Scout Cart Sidebar */}
+            <AnimatePresence>
+                {isCartOpen && (
+                    <ScoutCart onClose={() => setIsCartOpen(false)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 };
